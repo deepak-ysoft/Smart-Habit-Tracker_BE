@@ -1,7 +1,0 @@
-{
-  "command": "npm run start",
-  "serverUrl": "",
-  "authenticateProxy": false,
-  "autoDetectDevServer": true,
-  "commitMode": "commits"
-}
