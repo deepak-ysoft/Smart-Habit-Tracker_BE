@@ -43,12 +43,34 @@ exports.updateUserRole = async (req, res) => {
 
 exports.deleteUser = async (req, res) => {
   try {
-    const deletedUser = await User.findByIdAndDelete(req.params.userId);
-    if (!deletedUser) return error(res, "User not found", 404);
+    const { userId } = req.params;
 
-    await Habit.deleteMany({ userId: deletedUser._id });
+    // Find user to soft delete
+    const user = await User.findById(userId);
+    if (!user) return error(res, "User not found", 404);
 
-    return success(res, "User and associated habits deleted successfully");
+    // Soft delete user
+    user.isDeleted = true;
+    user.deletedAt = new Date();
+    user.deletedBy = req.userId; // the admin or requester performing the delete
+    await user.save();
+
+    // Soft delete all habits of that user
+    await Habit.updateMany(
+      { userId: userId },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedBy: req.userId,
+        },
+      }
+    );
+
+    return success(
+      res,
+      "User and all associated habits soft-deleted successfully"
+    );
   } catch (err) {
     return error(res, err.message);
   }

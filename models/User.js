@@ -1,5 +1,5 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema({
   email: {
@@ -27,18 +27,24 @@ const userSchema = new mongoose.Schema({
   },
   bio: {
     type: String,
-    default: '',
+    default: "",
   },
   role: {
     type: String,
-    enum: ['user', 'admin'],
-    default: 'user',
+    enum: ["user", "admin"],
+    default: "user",
+  },
+  notificationsEnabled: { type: Boolean, default: true },
+  preferredNotificationTime: {
+    type: String,
+    enum: ["morning", "afternoon", "evening"],
+    default: "morning",
   },
   preferences: {
     theme: {
       type: String,
-      enum: ['light', 'dark'],
-      default: 'light',
+      enum: ["light", "dark"],
+      default: "light",
     },
     notifications: {
       type: Boolean,
@@ -48,6 +54,16 @@ const userSchema = new mongoose.Schema({
       type: Boolean,
       default: true,
     },
+  },
+  isDeleted: { type: Boolean, default: false },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+  deletedAt: {
+    type: Date,
+    default: null,
   },
   createdAt: {
     type: Date,
@@ -59,8 +75,8 @@ const userSchema = new mongoose.Schema({
   },
 });
 
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) {
     return next();
   }
 
@@ -83,4 +99,4 @@ userSchema.methods.toJSON = function () {
   return obj;
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model("User", userSchema);

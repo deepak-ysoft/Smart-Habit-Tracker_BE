@@ -17,7 +17,7 @@ exports.register = async (req, res) => {
     const { email, password, firstName, lastName } = req.body;
 
     const existingUser = await User.findOne({ email });
-    if (existingUser) return error(res, "Email already registered", 400);
+    if (existingUser) return error(res, "Email already registered", 200);
 
     const user = new User({ email, password, firstName, lastName });
     await user.save();
@@ -46,10 +46,10 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return error(res, "Invalid email or password", 401);
+    if (!user) return error(res, "Invalid email or password", 200);
 
     const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) return error(res, "Invalid email or password", 401);
+    if (!isPasswordValid) return error(res, "Invalid email or password", 200);
 
     const token = generateToken(user._id, user.role);
 
