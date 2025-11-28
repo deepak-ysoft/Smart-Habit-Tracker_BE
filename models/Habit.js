@@ -76,7 +76,7 @@ const habitSchema = new mongoose.Schema({
   isDeleted: { type: Boolean, default: false },
   deletedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",  
+    ref: "User",
     default: null,
   },
   deletedAt: {

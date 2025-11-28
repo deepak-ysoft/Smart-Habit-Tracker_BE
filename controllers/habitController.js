@@ -89,10 +89,16 @@ exports.updateHabit = async (req, res) => {
 // Delete habit
 exports.deleteHabit = async (req, res) => {
   try {
-    const habit = await Habit.findOneAndDelete({
-      _id: req.params.habitId,
-      userId: req.userId,
-    });
+    // Find habit to soft delete
+    const habit = await Habit.findById(req.params.habitId);
+    if (!habit) return error(res, "Habit not found", 404);
+
+    // Soft delete habit
+    habit.isDeleted = true;
+    habit.deletedAt = new Date();
+    habit.deletedBy = req.userId;
+    await habit.save();
+
     if (!habit) return error(res, "Habit not found", 404);
 
     return success(res, "Habit deleted successfully");

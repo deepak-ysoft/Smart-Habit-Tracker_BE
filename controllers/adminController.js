@@ -4,7 +4,7 @@ const { success, error } = require("../utils/response");
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find().select("-password");
+    const users = await User.find({ role: "user" }).select("-password");
     return success(res, "Users fetched successfully", users);
   } catch (err) {
     return error(res, err.message);

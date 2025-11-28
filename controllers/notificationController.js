@@ -243,6 +243,30 @@ exports.markAsRead = async (req, res) => {
   }
 };
 
+// Mark single notification as unread
+exports.markAsUnread = async (req, res) => {
+  try {
+    const notification = await Notification.findOne({
+      _id: req.params.notificationId,
+      receivers: req.userId,
+    });
+
+    if (!notification) return error(res, "Notification not found", 404);
+
+    // Remove userId from readBy array if present
+    if (notification.readBy.includes(req.userId)) {
+      notification.readBy = notification.readBy.filter(
+        (id) => id.toString() !== req.userId.toString()
+      );
+      await notification.save();
+    }
+
+    return success(res, "Notification marked as unread", notification);
+  } catch (err) {
+    return error(res, err.message);
+  }
+};
+
 // Mark all notifications as read
 exports.markAllAsRead = async (req, res) => {
   try {

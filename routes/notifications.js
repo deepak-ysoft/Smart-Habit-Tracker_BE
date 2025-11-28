@@ -29,12 +29,16 @@ router.post("/send-system", authMiddleware, notificationController.sendSystem);
 
 router.get("/", authMiddleware, notificationController.getNotifications);
 
-router.get("/unread", authMiddleware, notificationController.getUnreadCount);
-
 router.put(
   "/:notificationId/read",
   authMiddleware,
   notificationController.markAsRead
+);
+
+router.put(
+  "/:notificationId/unread",
+  authMiddleware,
+  notificationController.markAsUnread
 );
 
 router.put("/read-all", authMiddleware, notificationController.markAllAsRead);
