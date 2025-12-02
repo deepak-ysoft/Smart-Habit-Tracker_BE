@@ -17,10 +17,11 @@ exports.createHabit = async (req, res) => {
       color,
       icon,
       preferredTime,
+      userId,
     } = req.body;
 
     const habit = new Habit({
-      userId: req.userId,
+      userId: userId || req.userId,
       name,
       description,
       category,
@@ -37,11 +38,31 @@ exports.createHabit = async (req, res) => {
     return error(res, err.message);
   }
 };
+//#region habits APIs for Admin Panel
+
+// Get all habits
+
+exports.getAllHabits = async (req, res) => {
+  try {
+    const habits = await Habit.find({
+      isDeleted: { $ne: true },
+    });
+    return success(res, "Habits fetched successfully", habits);
+  } catch (err) {
+    return error(res, err.message);
+  }
+};
+
+//#endregion
 
 // Get all habits
 exports.getHabits = async (req, res) => {
   try {
-    const habits = await Habit.find({ userId: req.userId });
+    const userId = req.query.userId || req.userId;
+    const habits = await Habit.find({
+      userId: userId,
+      isDeleted: { $ne: true },
+    });
     return success(res, "Habits fetched successfully", habits);
   } catch (err) {
     return error(res, err.message);
@@ -71,7 +92,8 @@ exports.updateHabit = async (req, res) => {
 
     const habit = await Habit.findOne({
       _id: req.params.habitId,
-      userId: req.userId,
+      userId: req.body.userId || req.userId,
+      isDeleted: { $ne: true },
     });
     if (!habit) return error(res, "Habit not found", 404);
 
@@ -79,7 +101,7 @@ exports.updateHabit = async (req, res) => {
     habit.updatedAt = new Date();
     await habit.save();
 
-    const habits = await Habit.find({ userId: req.userId });
+    const habits = await Habit.find({ userId: req.body.userId || req.userId });
     return success(res, "Habit updated successfully", habits);
   } catch (err) {
     return error(res, err.message);
@@ -110,12 +132,13 @@ exports.deleteHabit = async (req, res) => {
 // Mark complete
 exports.completeHabit = async (req, res) => {
   try {
-    const { date } = req.body;
+    const { date, userId } = req.body;
     const completionDate = date ? new Date(date) : new Date();
 
     const habit = await Habit.findOne({
       _id: req.params.habitId,
-      userId: req.userId,
+      userId: userId || req.userId,
+      isDeleted: { $ne: true },
     });
     if (!habit) return error(res, "Habit not found", 404);
 
@@ -132,7 +155,10 @@ exports.completeHabit = async (req, res) => {
     }
 
     await habit.save();
-    const habits = await Habit.find({ userId: req.userId });
+    const habits = await Habit.find({
+      userId: userId || req.userId,
+      isDeleted: { $ne: true },
+    });
     return success(res, "Habit marked as completed", habits);
   } catch (err) {
     return error(res, err.message);
@@ -142,12 +168,13 @@ exports.completeHabit = async (req, res) => {
 // Mark incomplete
 exports.incompleteHabit = async (req, res) => {
   try {
-    const { date } = req.body;
+    const { date, userId } = req.body;
     const completionDate = date ? new Date(date) : new Date();
 
     const habit = await Habit.findOne({
       _id: req.params.habitId,
-      userId: req.userId,
+      userId: userId || req.userId,
+      isDeleted: { $ne: true },
     });
     if (!habit) return error(res, "Habit not found", 404);
 
@@ -158,7 +185,10 @@ exports.incompleteHabit = async (req, res) => {
     habit.streak = 0;
     await habit.save();
 
-    const habits = await Habit.find({ userId: req.userId });
+    const habits = await Habit.find({
+      userId: userId || req.userId,
+      isDeleted: { $ne: true },
+    });
     return success(res, "Habit marked as incomplete", habits);
   } catch (err) {
     return error(res, err.message);

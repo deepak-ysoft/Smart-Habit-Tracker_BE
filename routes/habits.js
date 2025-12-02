@@ -15,6 +15,8 @@ router.post(
   habitController.createHabit
 );
 
+router.get("/getAllHabits", authMiddleware, habitController.getAllHabits);
+
 router.get("/", authMiddleware, habitController.getHabits);
 
 router.get("/:habitId", authMiddleware, habitController.getHabitById);

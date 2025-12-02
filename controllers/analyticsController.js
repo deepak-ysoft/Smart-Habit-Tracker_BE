@@ -3,7 +3,11 @@ const { success, error } = require("../utils/response");
 
 exports.getSummary = async (req, res) => {
   try {
-    const habits = await Habit.find({ userId: req.userId });
+    const userId = req.query.userId || req.userId;
+    const habits = await Habit.find({
+      userId: userId,
+      isDeleted: { $ne: true },
+    });
 
     const totalHabits = habits.length;
     const activeHabits = habits.filter((h) => h.active).length;
@@ -41,7 +45,11 @@ exports.getSummary = async (req, res) => {
 
 exports.getWeekly = async (req, res) => {
   try {
-    const habits = await Habit.find({ userId: req.userId });
+    const userId = req.query.userId || req.userId;
+    const habits = await Habit.find({
+      userId: userId,
+      isDeleted: { $ne: true },
+    });
 
     const today = new Date();
     const weekData = [];
@@ -87,7 +95,11 @@ exports.getWeekly = async (req, res) => {
 
 exports.getMonthly = async (req, res) => {
   try {
-    const habits = await Habit.find({ userId: req.userId });
+    const userId = req.query.userId || req.userId;
+    const habits = await Habit.find({
+      userId: userId,
+      isDeleted: { $ne: true },
+    });
 
     const today = new Date();
     const monthData = [];
@@ -136,6 +148,7 @@ exports.getHabitAnalytics = async (req, res) => {
     const habit = await Habit.findOne({
       _id: req.params.habitId,
       userId: req.userId,
+      isDeleted: { $ne: true },
     });
 
     if (!habit) return error(res, "Habit not found", 404);

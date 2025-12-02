@@ -1,9 +1,9 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const analyticsSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: "User",
     required: true,
   },
   date: {
@@ -30,20 +30,34 @@ const analyticsSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-  weeklyStats: [{
-    week: Number,
-    completions: Number,
-    scheduled: Number,
-  }],
-  monthlyStats: [{
-    month: Number,
-    completions: Number,
-    scheduled: Number,
-  }],
+  weeklyStats: [
+    {
+      week: Number,
+      completions: Number,
+      scheduled: Number,
+    },
+  ],
+  monthlyStats: [
+    {
+      month: Number,
+      completions: Number,
+      scheduled: Number,
+    },
+  ],
+  isDeleted: { type: Boolean, default: false },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+  deletedAt: {
+    type: Date,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
 });
 
-module.exports = mongoose.model('Analytics', analyticsSchema);
+module.exports = mongoose.model("Analytics", analyticsSchema);

@@ -11,6 +11,7 @@ const analyticsRoutes = require("./routes/analytics");
 const profileRoutes = require("./routes/profile");
 const adminRoutes = require("./routes/admin");
 const notificationRoutes = require("./routes/notifications");
+const aiSuggestions = require("./routes/aiCoach");
 
 const { error } = require("./utils/response");
 
@@ -71,6 +72,7 @@ mongoose
 app.use("/api/auth", authRoutes);
 app.use("/api/habits", habitRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/ai", aiSuggestions);
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);

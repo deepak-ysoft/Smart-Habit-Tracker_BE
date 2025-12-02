@@ -17,7 +17,10 @@ exports.register = async (req, res) => {
 
     const { email, password, firstName, lastName } = req.body;
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({
+      email,
+      isDeleted: { $ne: true },
+    });
     if (existingUser) return error(res, "Email already registered", 200);
 
     const user = new User({ email, password, firstName, lastName });
@@ -48,6 +51,7 @@ exports.login = async (req, res) => {
 
     const user = await User.findOne({ email });
     if (!user) return error(res, "Invalid email or password", 200);
+    if (user.isDeleted) return error(res, "Your account has been deleted", 200);
 
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) return error(res, "Invalid email or password", 200);
@@ -67,7 +71,7 @@ exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email, isDeleted: { $ne: true } });
     if (!user) return error(res, "User not found", 404);
 
     const resetToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
@@ -161,7 +165,10 @@ exports.resetPassword = async (req, res) => {
 
 exports.me = async (req, res) => {
   try {
-    const user = await User.findById(req.userId);
+    const user = await User.findOne({
+      _id: req.userId,
+      isDeleted: { $ne: true },
+    });
     return success(res, "User details fetched", user.toJSON());
   } catch (err) {
     return error(res, err.message);

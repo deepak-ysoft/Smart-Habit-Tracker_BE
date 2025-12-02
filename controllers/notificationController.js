@@ -3,13 +3,6 @@ const Notification = require("../models/Notification");
 const User = require("../models/User");
 const { success, error } = require("../utils/response");
 
-// 🔥 Helper: Emit to multiple users
-// const emitToUsers = (io, receivers, notification) => {
-//   receivers.forEach((id) => {
-//     io.to(id.toString()).emit("new-notification", notification);
-//   });
-// };
-
 // ----------------------------------------------------------------------
 // SEND TO SINGLE USER
 // ----------------------------------------------------------------------
@@ -22,7 +15,10 @@ exports.sendToUser = async (req, res) => {
 
     // Role validation
     if (req.userRole === "user") {
-      const target = await User.findById(receiverId);
+      const target = await User.findOne({
+        _id: receiverId,
+        isDeleted: { $ne: true },
+      });
 
       if (!target || target.role !== "admin") {
         return error(res, "Users can send only to admins", 403);
@@ -62,7 +58,10 @@ exports.sendToAll = async (req, res) => {
 
     if (!title || !message || !type) return error(res, "Missing fields", 400);
 
-    const users = await User.find({ role: "user" }).select("_id");
+    const users = await User.find({
+      role: "user",
+      isDeleted: { $ne: true },
+    }).select("_id");
 
     const receivers = users.map((u) => u._id);
 
@@ -93,7 +92,10 @@ exports.sendToAdmin = async (req, res) => {
     const { title, message, type } = req.body;
     if (!title || !message || !type) return error(res, "Missing fields", 400);
 
-    const admins = await User.find({ role: "admin" }).select("_id");
+    const admins = await User.find({
+      role: "admin",
+      isDeleted: { $ne: true },
+    }).select("_id");
 
     const receivers = admins
       .map((a) => a._id.toString())
@@ -131,7 +133,10 @@ exports.sendToCategory = async (req, res) => {
     if (!category || !title || !message || !type)
       return error(res, "Missing fields", 400);
 
-    const habits = await Habit.find({ category }).select("userId");
+    const habits = await Habit.find({
+      category,
+      isDeleted: { $ne: true },
+    }).select("userId");
 
     const receivers = [...new Set(habits.map((h) => h.userId.toString()))];
 
@@ -165,7 +170,10 @@ exports.sendSystem = async (req, res) => {
 
     const { title, message, type } = req.body;
 
-    const users = await User.find({ role: "user" }).select("_id");
+    const users = await User.find({
+      role: "user",
+      isDeleted: { $ne: true },
+    }).select("_id");
 
     const receivers = users.map((u) => u._id);
 
@@ -308,35 +316,3 @@ exports.deleteNotification = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
-
-// exports.deleteNotification = async (req, res) => {
-//   try {
-//     const notif = await Notification.findOne({
-//       _id: req.params.notificationId,
-//       receivers: req.userId,
-//     });
-
-//     if (!notif) return error(res, "Notification not found", 404);
-
-//     // Remove user from receivers list
-//     notif.receivers = notif.receivers.filter(
-//       (id) => id.toString() !== req.userId.toString()
-//     );
-
-//     // Also remove from read list
-//     notif.readBy = notif.readBy.filter(
-//       (id) => id.toString() !== req.userId.toString()
-//     );
-
-//     if (notif.receivers.length === 0) {
-//       // delete if no users left
-//       await Notification.deleteOne({ _id: notif._id });
-//     } else {
-//       await notif.save();
-//     }
-
-//     return success(res, "Notification deleted for user");
-//   } catch (err) {
-//     return error(res, err.message);
-//   }
-// };
