@@ -316,3 +316,471 @@ exports.deleteNotification = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
+
+// Send habit reminder - only to the logged-in user
+exports.sendHabitReminder = async (req, res) => {
+  try {
+    const { habitId, habitName, preferredTime, message } = req.body;
+    const senderId = req.userId; // The user sending the reminder (themselves)
+
+    if (!habitName || !message) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Create notification for the logged-in user only
+    const notification = new Notification({
+      receivers: [senderId], // Only send to the logged-in user
+      sender: senderId, // User is sending reminder to themselves
+      title: "Habit Reminder",
+      message,
+      type: "habit_reminder",
+      relatedHabitId: habitId || null,
+    });
+
+    await notification.save();
+
+    // Emit via Socket.IO to the user
+    const io = req.app.get("io");
+    io.to(senderId).emit("habit-reminder", {
+      _id: notification._id,
+      habitName,
+      preferredTime,
+      message,
+      createdAt: notification.createdAt,
+    });
+
+    res.status(201).json({
+      message: "Habit reminder sent",
+      notification,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to send habit reminder" });
+  }
+};
+
+// const Notification = require("../models/Notification");
+// const User = require("../models/User");
+
+// // Send notification to single user
+// exports.sendToUser = async (req, res) => {
+//   try {
+//     const { receiverId, title, message, type } = req.body;
+//     const senderId = req.userId;
+
+//     if (!receiverId || !title || !message) {
+//       return res.status(400).json({ message: "Missing required fields" });
+//     }
+
+//     const notification = new Notification({
+//       receivers: [receiverId],
+//       sender: senderId,
+//       title,
+//       message,
+//       type: type || "user",
+//     });
+
+//     await notification.save();
+
+//     // Emit via Socket.IO if receiver is online
+//     const io = req.app.get("io");
+//     io.to(receiverId).emit("notification", {
+//       _id: notification._id,
+//       title,
+//       message,
+//       type,
+//       createdAt: notification.createdAt,
+//     });
+
+//     res.status(201).json({
+//       message: "Notification sent successfully",
+//       notification,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to send notification" });
+//   }
+// };
+
+// // Send notification to all users
+// exports.sendToAll = async (req, res) => {
+//   try {
+//     const { title, message, type } = req.body;
+//     const senderId = req.userId;
+
+//     if (!title || !message) {
+//       return res.status(400).json({ message: "Missing required fields" });
+//     }
+
+//     const allUsers = await User.find({ isDeleted: false }).select("_id");
+//     const receiverIds = allUsers.map((user) => user._id);
+
+//     const notification = new Notification({
+//       receivers: receiverIds,
+//       sender: senderId,
+//       title,
+//       message,
+//       type: type || "admin_broadcast",
+//     });
+
+//     await notification.save();
+
+//     // Emit via Socket.IO to all users
+//     const io = req.app.get("io");
+//     receiverIds.forEach((userId) => {
+//       io.to(userId.toString()).emit("notification", {
+//         _id: notification._id,
+//         title,
+//         message,
+//         type,
+//         createdAt: notification.createdAt,
+//       });
+//     });
+
+//     res.status(201).json({
+//       message: "Broadcast sent to all users",
+//       notification,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to send broadcast" });
+//   }
+// };
+
+// // Send notification to all admins
+// exports.sendToAdmin = async (req, res) => {
+//   try {
+//     const { title, message, type } = req.body;
+//     const senderId = req.userId;
+
+//     if (!title || !message) {
+//       return res.status(400).json({ message: "Missing required fields" });
+//     }
+
+//     const adminUsers = await User.find({
+//       role: "admin",
+//       isDeleted: false,
+//     }).select("_id");
+//     const receiverIds = adminUsers.map((user) => user._id);
+
+//     if (receiverIds.length === 0) {
+//       return res.status(404).json({ message: "No admins found" });
+//     }
+
+//     const notification = new Notification({
+//       receivers: receiverIds,
+//       sender: senderId,
+//       title,
+//       message,
+//       type: type || "system",
+//     });
+
+//     await notification.save();
+
+//     // Emit via Socket.IO to all admins
+//     const io = req.app.get("io");
+//     receiverIds.forEach((userId) => {
+//       io.to(userId.toString()).emit("notification", {
+//         _id: notification._id,
+//         title,
+//         message,
+//         type,
+//         createdAt: notification.createdAt,
+//       });
+//     });
+
+//     res.status(201).json({
+//       message: "Notification sent to all admins",
+//       notification,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to send notification to admins" });
+//   }
+// };
+
+// // Send notification to users in a category
+// exports.sendToCategory = async (req, res) => {
+//   try {
+//     const { category, title, message, type } = req.body;
+//     const senderId = req.userId;
+
+//     if (!category || !title || !message) {
+//       return res.status(400).json({ message: "Missing required fields" });
+//     }
+
+//     const categoryUsers = await User.find(
+//       { "preferences.category": category, isDeleted: false },
+//       "_id"
+//     );
+//     const receiverIds = categoryUsers.map((user) => user._id);
+
+//     const notification = new Notification({
+//       receivers: receiverIds,
+//       sender: senderId,
+//       title,
+//       message,
+//       type: type || "category_alert",
+//       category,
+//     });
+
+//     await notification.save();
+
+//     // Emit via Socket.IO to category users
+//     const io = req.app.get("io");
+//     receiverIds.forEach((userId) => {
+//       io.to(userId.toString()).emit("notification", {
+//         _id: notification._id,
+//         title,
+//         message,
+//         type,
+//         createdAt: notification.createdAt,
+//       });
+//     });
+
+//     res.status(201).json({
+//       message: "Notification sent to category users",
+//       notification,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to send category notification" });
+//   }
+// };
+
+// // Send system notification
+// exports.sendSystem = async (req, res) => {
+//   try {
+//     const { receivers, title, message, type } = req.body;
+//     const senderId = req.userId;
+
+//     if (!receivers || receivers.length === 0 || !title || !message) {
+//       return res.status(400).json({ message: "Missing required fields" });
+//     }
+
+//     const notification = new Notification({
+//       receivers: Array.isArray(receivers) ? receivers : [receivers],
+//       sender: senderId,
+//       title,
+//       message,
+//       type: type || "system",
+//     });
+
+//     await notification.save();
+
+//     // Emit via Socket.IO
+//     const io = req.app.get("io");
+//     (Array.isArray(receivers) ? receivers : [receivers]).forEach((userId) => {
+//       io.to(userId.toString()).emit("notification", {
+//         _id: notification._id,
+//         title,
+//         message,
+//         type,
+//         createdAt: notification.createdAt,
+//       });
+//     });
+
+//     res.status(201).json({
+//       message: "System notification sent",
+//       notification,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to send system notification" });
+//   }
+// };
+
+// // Send habit reminder - only to the logged-in user
+// exports.sendHabitReminder = async (req, res) => {
+//   try {
+//     const { habitId, habitName, preferredTime, message } = req.body;
+//     const senderId = req.userId; // The user sending the reminder (themselves)
+
+//     if (!habitName || !message) {
+//       return res.status(400).json({ message: "Missing required fields" });
+//     }
+
+//     // Create notification for the logged-in user only
+//     const notification = new Notification({
+//       receivers: [senderId], // Only send to the logged-in user
+//       sender: senderId, // User is sending reminder to themselves
+//       title: "Habit Reminder",
+//       message,
+//       type: "habit_reminder",
+//       relatedHabitId: habitId || null,
+//     });
+
+//     await notification.save();
+
+//     // Emit via Socket.IO to the user
+//     const io = req.app.get("io");
+//     io.to(senderId).emit("habit-reminder", {
+//       _id: notification._id,
+//       habitName,
+//       preferredTime,
+//       message,
+//       createdAt: notification.createdAt,
+//     });
+
+//     res.status(201).json({
+//       message: "Habit reminder sent",
+//       notification,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to send habit reminder" });
+//   }
+// };
+
+// // Get notifications for logged-in user
+// exports.getNotifications = async (req, res) => {
+//   try {
+//     const userId = req.userId;
+//     const { limit = 20, skip = 0 } = req.query;
+
+//     const notifications = await Notification.find({
+//       receivers: userId,
+//       isDeleted: false,
+//     })
+//       .populate("sender", "firstName lastName")
+//       .sort({ createdAt: -1 })
+//       .limit(parseInt(limit))
+//       .skip(parseInt(skip));
+
+//     const total = await Notification.countDocuments({
+//       receivers: userId,
+//       isDeleted: false,
+//     });
+
+//     res.json({
+//       notifications,
+//       total,
+//       limit: parseInt(limit),
+//       skip: parseInt(skip),
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to fetch notifications" });
+//   }
+// };
+
+// // Get unread notification count
+// exports.getUnreadCount = async (req, res) => {
+//   try {
+//     const userId = req.userId;
+
+//     const unreadCount = await Notification.countDocuments({
+//       receivers: userId,
+//       readBy: { $ne: userId },
+//       isDeleted: false,
+//     });
+
+//     res.json({ unreadCount });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to fetch unread count" });
+//   }
+// };
+
+// // Mark notification as read
+// exports.markAsRead = async (req, res) => {
+//   try {
+//     const { notificationId } = req.params;
+//     const userId = req.userId;
+
+//     const notification = await Notification.findByIdAndUpdate(
+//       notificationId,
+//       { $addToSet: { readBy: userId } },
+//       { new: true }
+//     );
+
+//     if (!notification) {
+//       return res.status(404).json({ message: "Notification not found" });
+//     }
+
+//     res.json({
+//       message: "Notification marked as read",
+//       notification,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to mark notification as read" });
+//   }
+// };
+
+// // Mark notification as unread
+// exports.markAsUnread = async (req, res) => {
+//   try {
+//     const { notificationId } = req.params;
+//     const userId = req.userId;
+
+//     const notification = await Notification.findByIdAndUpdate(
+//       notificationId,
+//       { $pull: { readBy: userId } },
+//       { new: true }
+//     );
+
+//     if (!notification) {
+//       return res.status(404).json({ message: "Notification not found" });
+//     }
+
+//     res.json({
+//       message: "Notification marked as unread",
+//       notification,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to mark notification as unread" });
+//   }
+// };
+
+// // Mark all notifications as read
+// exports.markAllAsRead = async (req, res) => {
+//   try {
+//     const userId = req.userId;
+
+//     await Notification.updateMany(
+//       {
+//         receivers: userId,
+//         readBy: { $ne: userId },
+//       },
+//       { $addToSet: { readBy: userId } }
+//     );
+
+//     res.json({ message: "All notifications marked as read" });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to mark all as read" });
+//   }
+// };
+
+// // Delete notification
+// exports.deleteNotification = async (req, res) => {
+//   try {
+//     const { notificationId } = req.params;
+//     const userId = req.userId;
+
+//     const notification = await Notification.findByIdAndUpdate(
+//       notificationId,
+//       {
+//         isDeleted: true,
+//         deletedAt: new Date(),
+//         $addToSet: { deletedBy: userId },
+//       },
+//       { new: true }
+//     );
+
+//     if (!notification) {
+//       return res.status(404).json({ message: "Notification not found" });
+//     }
+
+//     res.json({
+//       message: "Notification deleted",
+//       notification,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Failed to delete notification" });
+//     return res.status(500).json({ message: err.message });
+//   }
+// };

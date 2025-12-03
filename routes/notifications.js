@@ -27,7 +27,12 @@ router.post(
 // Send system notification (backend-origin)
 router.post("/send-system", authMiddleware, notificationController.sendSystem);
 
+// Send habit reminder (only to logged-in user)
+router.post("/habit-reminder", authMiddleware, notificationController.sendHabitReminder);
+
 router.get("/", authMiddleware, notificationController.getNotifications);
+
+router.get("/unread-count", authMiddleware, notificationController.getUnreadCount);
 
 router.put(
   "/:notificationId/read",
