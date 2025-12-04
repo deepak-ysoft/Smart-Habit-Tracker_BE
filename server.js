@@ -34,17 +34,33 @@ const onlineUsers = {};
 
 io.on("connection", (socket) => {
   console.log("🚀 Client connected:", socket.id);
+  console.log("🔍 Connection details - Transport:", socket.conn.transport.name);
+
   socket.on("register", (userId) => {
-    onlineUsers[userId] = socket.id;
-    socket.join(userId);
-    console.log("📌 User Registered:", userId);
+    const userIdStr = userId.toString();
+    onlineUsers[userIdStr] = socket.id;
+    socket.join(userIdStr);
+    console.log("📌 User Registered:", userIdStr, "Socket ID:", socket.id);
+    console.log("📊 Online Users:", Object.keys(onlineUsers));
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", (reason) => {
+    console.log("❌ Client disconnected:", socket.id, "Reason:", reason);
     for (let uid in onlineUsers) {
-      if (onlineUsers[uid] === socket.id) delete onlineUsers[uid];
+      if (onlineUsers[uid] === socket.id) {
+        delete onlineUsers[uid];
+        console.log("👤 User removed from online:", uid);
+      }
     }
-    console.log("❌ Client disconnected:", socket.id);
+    console.log("📊 Online Users:", Object.keys(onlineUsers));
+  });
+
+  socket.on("error", (error) => {
+    console.error("🔴 Socket error:", error);
+  });
+
+  socket.on("connect_error", (error) => {
+    console.error("🔴 Connection error:", error);
   });
 });
 

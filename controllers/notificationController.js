@@ -37,8 +37,23 @@ exports.sendToUser = async (req, res) => {
       message,
     });
 
+    // Emit via Socket.IO with error handling
     const io = req.app.get("io");
-    io.to(receiverId).emit("new-notification", notification);
+    if (io) {
+      const receiverIdStr = receiverId.toString();
+      try {
+        // Get the room to check if anyone is in it
+        const room = io.sockets.adapter.rooms.get(receiverIdStr);
+        const socketsInRoom = room ? room.size : 0;
+
+        console.log(`📨 Attempting to emit to user ${receiverIdStr}, sockets in room: ${socketsInRoom}`);
+
+        io.to(receiverIdStr).emit("new-notification", notification);
+        console.log(`✅ Emitted notification to user ${receiverIdStr}`);
+      } catch (socketError) {
+        console.warn(`⚠️ Could not emit notification via socket to ${receiverId}:`, socketError.message);
+      }
+    }
 
     return success(res, "Notification sent to user", notification);
   } catch (err) {
@@ -73,10 +88,18 @@ exports.sendToAll = async (req, res) => {
       message,
     });
 
+    // Emit via Socket.IO with error handling
     const io = req.app.get("io");
-    receivers.forEach((id) => {
-      io.to(id.toString()).emit("new-notification", notification);
-    });
+    if (io) {
+      receivers.forEach((id) => {
+        try {
+          io.to(id.toString()).emit("new-notification", notification);
+          console.log(`✅ Emitted broadcast notification to user ${id}`);
+        } catch (socketError) {
+          console.warn(`⚠️ Could not emit to user ${id}:`, socketError.message);
+        }
+      });
+    }
 
     return success(res, "Broadcast sent to all users", notification);
   } catch (err) {
@@ -99,7 +122,7 @@ exports.sendToAdmin = async (req, res) => {
 
     const receivers = admins
       .map((a) => a._id.toString())
-      .filter((id) => id !== req.userId.toString()); // prevent self-send
+      .filter((id) => id !== req.userId.toString());
 
     const notification = await Notification.create({
       receivers,
@@ -109,10 +132,18 @@ exports.sendToAdmin = async (req, res) => {
       message,
     });
 
+    // Emit via Socket.IO with error handling
     const io = req.app.get("io");
-    receivers.forEach((id) => {
-      io.to(id).emit("new-notification", notification);
-    });
+    if (io) {
+      receivers.forEach((id) => {
+        try {
+          io.to(id).emit("new-notification", notification);
+          console.log(`✅ Emitted admin notification to user ${id}`);
+        } catch (socketError) {
+          console.warn(`⚠️ Could not emit to admin ${id}:`, socketError.message);
+        }
+      });
+    }
 
     return success(res, "Sent to admins", notification);
   } catch (err) {
@@ -149,10 +180,18 @@ exports.sendToCategory = async (req, res) => {
       message,
     });
 
+    // Emit via Socket.IO with error handling
     const io = req.app.get("io");
-    receivers.forEach((id) => {
-      io.to(id).emit("new-notification", notification);
-    });
+    if (io) {
+      receivers.forEach((id) => {
+        try {
+          io.to(id).emit("new-notification", notification);
+          console.log(`✅ Emitted category notification to user ${id}`);
+        } catch (socketError) {
+          console.warn(`⚠️ Could not emit to user ${id}:`, socketError.message);
+        }
+      });
+    }
 
     return success(res, "Category notification sent", notification);
   } catch (err) {
@@ -188,10 +227,18 @@ exports.sendSystem = async (req, res) => {
       message,
     });
 
+    // Emit via Socket.IO with error handling
     const io = req.app.get("io");
-    receivers.forEach((id) => {
-      io.to(id.toString()).emit("new-notification", notification);
-    });
+    if (io) {
+      receivers.forEach((id) => {
+        try {
+          io.to(id.toString()).emit("new-notification", notification);
+          console.log(`✅ Emitted system notification to user ${id}`);
+        } catch (socketError) {
+          console.warn(`⚠️ Could not emit to user ${id}:`, socketError.message);
+        }
+      });
+    }
 
     return success(res, "System notification sent", notification);
   } catch (err) {
@@ -321,16 +368,15 @@ exports.deleteNotification = async (req, res) => {
 exports.sendHabitReminder = async (req, res) => {
   try {
     const { habitId, habitName, preferredTime, message } = req.body;
-    const senderId = req.userId; // The user sending the reminder (themselves)
+    const senderId = req.userId;
 
     if (!habitName || !message) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Create notification for the logged-in user only
     const notification = new Notification({
-      receivers: [senderId], // Only send to the logged-in user
-      sender: senderId, // User is sending reminder to themselves
+      receivers: [senderId],
+      sender: senderId,
       title: "Habit Reminder",
       message,
       type: "habit_reminder",
@@ -339,15 +385,22 @@ exports.sendHabitReminder = async (req, res) => {
 
     await notification.save();
 
-    // Emit via Socket.IO to the user
+    // Emit via Socket.IO with error handling
     const io = req.app.get("io");
-    io.to(senderId).emit("habit-reminder", {
-      _id: notification._id,
-      habitName,
-      preferredTime,
-      message,
-      createdAt: notification.createdAt,
-    });
+    if (io) {
+      try {
+        io.to(senderId.toString()).emit("habit-reminder", {
+          _id: notification._id,
+          habitName,
+          preferredTime,
+          message,
+          createdAt: notification.createdAt,
+        });
+        console.log(`✅ Habit reminder emitted to user ${senderId}`);
+      } catch (socketError) {
+        console.warn(`⚠️ Could not emit habit reminder via socket to ${senderId}:`, socketError.message);
+      }
+    }
 
     res.status(201).json({
       message: "Habit reminder sent",
