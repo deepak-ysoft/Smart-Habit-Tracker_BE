@@ -2,6 +2,13 @@ const Habit = require("../models/Habit");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
 const { success, error } = require("../utils/response");
+const {
+  isNotificationsEnabled,
+  shouldSendInAppNotification,
+  shouldSendEmailReminder,
+  filterUsersByPreferences,
+  getUserNotificationPreferences,
+} = require("../utils/notificationPreferences");
 
 // ----------------------------------------------------------------------
 // SEND TO SINGLE USER
@@ -28,6 +35,30 @@ exports.sendToUser = async (req, res) => {
     // Prevent admin sending to themselves
     if (req.userId.toString() === receiverId)
       return error(res, "Cannot send notification to yourself", 400);
+
+    // Check receiver's notification preferences
+    const receiver = await User.findById(receiverId);
+    if (!receiver) {
+      return error(res, "Receiver not found", 404);
+    }
+
+    // Check if receiver has notifications enabled
+    if (!isNotificationsEnabled(receiver)) {
+      return error(
+        res,
+        "Receiver has notifications disabled",
+        403
+      );
+    }
+
+    // Check if receiver allows in-app notifications
+    if (!shouldSendInAppNotification(receiver)) {
+      return error(
+        res,
+        "Receiver has in-app notifications disabled",
+        403
+      );
+    }
 
     const notification = await Notification.create({
       receivers: [receiverId],
@@ -76,9 +107,16 @@ exports.sendToAll = async (req, res) => {
     const users = await User.find({
       role: "user",
       isDeleted: { $ne: true },
-    }).select("_id");
+    }).select("_id notificationsEnabled preferences");
 
-    const receivers = users.map((u) => u._id);
+    // Filter users based on their notification preferences
+    const receivers = users
+      .filter((user) => shouldSendInAppNotification(user))
+      .map((u) => u._id);
+
+    if (receivers.length === 0) {
+      return error(res, "No users with notifications enabled to send to", 404);
+    }
 
     const notification = await Notification.create({
       receivers,
@@ -118,11 +156,22 @@ exports.sendToAdmin = async (req, res) => {
     const admins = await User.find({
       role: "admin",
       isDeleted: { $ne: true },
-    }).select("_id");
+    }).select("_id notificationsEnabled preferences");
 
+    // Filter admins based on their notification preferences
     const receivers = admins
-      .map((a) => a._id.toString())
-      .filter((id) => id !== req.userId.toString());
+      .filter((admin) => {
+        const adminIdStr = admin._id.toString();
+        return (
+          adminIdStr !== req.userId.toString() &&
+          shouldSendInAppNotification(admin)
+        );
+      })
+      .map((a) => a._id);
+
+    if (receivers.length === 0) {
+      return error(res, "No admins with notifications enabled to send to", 404);
+    }
 
     const notification = await Notification.create({
       receivers,
@@ -137,7 +186,7 @@ exports.sendToAdmin = async (req, res) => {
     if (io) {
       receivers.forEach((id) => {
         try {
-          io.to(id).emit("new-notification", notification);
+          io.to(id.toString()).emit("new-notification", notification);
           console.log(`✅ Emitted admin notification to user ${id}`);
         } catch (socketError) {
           console.warn(`⚠️ Could not emit to admin ${id}:`, socketError.message);
@@ -169,7 +218,21 @@ exports.sendToCategory = async (req, res) => {
       isDeleted: { $ne: true },
     }).select("userId");
 
-    const receivers = [...new Set(habits.map((h) => h.userId.toString()))];
+    const userIds = [...new Set(habits.map((h) => h.userId.toString()))];
+
+    // Get users and filter by notification preferences
+    const users = await User.find({
+      _id: { $in: userIds },
+      isDeleted: { $ne: true },
+    }).select("_id notificationsEnabled preferences");
+
+    const receivers = users
+      .filter((user) => shouldSendInAppNotification(user))
+      .map((u) => u._id);
+
+    if (receivers.length === 0) {
+      return error(res, "No users with notifications enabled in this category", 404);
+    }
 
     const notification = await Notification.create({
       receivers,
@@ -185,7 +248,7 @@ exports.sendToCategory = async (req, res) => {
     if (io) {
       receivers.forEach((id) => {
         try {
-          io.to(id).emit("new-notification", notification);
+          io.to(id.toString()).emit("new-notification", notification);
           console.log(`✅ Emitted category notification to user ${id}`);
         } catch (socketError) {
           console.warn(`⚠️ Could not emit to user ${id}:`, socketError.message);
@@ -212,12 +275,15 @@ exports.sendSystem = async (req, res) => {
     const users = await User.find({
       role: "user",
       isDeleted: { $ne: true },
-    }).select("_id");
+    }).select("_id notificationsEnabled preferences");
 
-    const receivers = users.map((u) => u._id);
+    // Filter users based on their notification preferences
+    const receivers = users
+      .filter((user) => shouldSendInAppNotification(user))
+      .map((u) => u._id);
 
     if (!receivers || receivers.length === 0)
-      return error(res, "No receivers provided", 400);
+      return error(res, "No users with notifications enabled", 400);
 
     const notification = await Notification.create({
       receivers,
@@ -372,6 +438,22 @@ exports.sendHabitReminder = async (req, res) => {
 
     if (!habitName || !message) {
       return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Check user's notification preferences
+    const user = await User.findById(senderId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if user has notifications enabled
+    if (!isNotificationsEnabled(user)) {
+      return res.status(403).json({ message: "You have notifications disabled" });
+    }
+
+    // Check if user allows in-app notifications
+    if (!shouldSendInAppNotification(user)) {
+      return res.status(403).json({ message: "You have in-app notifications disabled" });
     }
 
     const notification = new Notification({
