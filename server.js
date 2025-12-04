@@ -20,47 +20,90 @@ const app = express();
 // ⭐ CREATE HTTP SERVER (REQUIRED FOR SOCKET.IO)
 const server = http.createServer(app);
 
-// ⭐ CREATE SOCKET.IO SERVER
+const jwt = require("jsonwebtoken");
+
+// ⭐ CREATE SOCKET.IO SERVER with authentication middleware
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173", // CRA frontend
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
     methods: ["GET", "POST"],
     credentials: true,
   },
 });
 
-// Store online users
-const onlineUsers = {};
+// Store online users with their socket IDs and user IDs
+const onlineUsers = new Map();
+
+// Middleware: Authenticate socket connection with JWT
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+
+  if (!token) {
+    console.warn("⚠️ Socket connection attempt without token from:", socket.id);
+    return next(new Error("Authentication token required"));
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.userId = decoded.id || decoded.userId;
+    socket.userRole = decoded.role;
+    console.log("✅ Socket authenticated for user:", socket.userId);
+    next();
+  } catch (err) {
+    console.error("❌ Token verification failed:", err.message);
+    next(new Error("Invalid token"));
+  }
+});
 
 io.on("connection", (socket) => {
-  console.log("🚀 Client connected:", socket.id);
-  console.log("🔍 Connection details - Transport:", socket.conn.transport.name);
+  console.log("🚀 Authenticated client connected:", {
+    socketId: socket.id,
+    userId: socket.userId,
+    transport: socket.conn.transport.name,
+  });
 
-  socket.on("register", (userId) => {
+  // Register user after authentication
+  socket.on("register", (userId, callback) => {
     const userIdStr = userId.toString();
-    onlineUsers[userIdStr] = socket.id;
+    const authenticatedUserId = socket.userId.toString();
+
+    // Verify that the user registering is the authenticated user
+    if (userIdStr !== authenticatedUserId) {
+      console.error("❌ User ID mismatch! Register attempt rejected", {
+        requested: userIdStr,
+        authenticated: authenticatedUserId,
+      });
+      if (callback) callback({ success: false, error: "ID mismatch" });
+      return;
+    }
+
+    onlineUsers.set(userIdStr, {
+      socketId: socket.id,
+      connectedAt: new Date(),
+    });
     socket.join(userIdStr);
-    console.log("📌 User Registered:", userIdStr, "Socket ID:", socket.id);
-    console.log("📊 Online Users:", Object.keys(onlineUsers));
+
+    console.log("✅ User Registered:", userIdStr, "Socket ID:", socket.id);
+    console.log("📊 Online Users:", Array.from(onlineUsers.keys()));
+
+    if (callback) callback({ success: true });
   });
 
   socket.on("disconnect", (reason) => {
-    console.log("❌ Client disconnected:", socket.id, "Reason:", reason);
-    for (let uid in onlineUsers) {
-      if (onlineUsers[uid] === socket.id) {
-        delete onlineUsers[uid];
-        console.log("👤 User removed from online:", uid);
-      }
+    const userId = socket.userId?.toString();
+    if (userId && onlineUsers.has(userId)) {
+      onlineUsers.delete(userId);
+      console.log("👤 User removed from online:", userId, "Reason:", reason);
     }
-    console.log("📊 Online Users:", Object.keys(onlineUsers));
+    console.log("📊 Remaining online users:", Array.from(onlineUsers.keys()));
   });
 
   socket.on("error", (error) => {
-    console.error("🔴 Socket error:", error);
+    console.error("🔴 Socket error for user", socket.userId, ":", error);
   });
 
   socket.on("connect_error", (error) => {
-    console.error("🔴 Connection error:", error);
+    console.error("🔴 Connection error:", error.message);
   });
 });
 
