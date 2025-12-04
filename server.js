@@ -25,7 +25,7 @@ const jwt = require("jsonwebtoken");
 // ⭐ CREATE SOCKET.IO SERVER with authentication middleware
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "https://aihabittracker.netlify.app",
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -116,7 +116,7 @@ app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "https://aihabittracker.netlify.app",
     credentials: true,
   })
 );
