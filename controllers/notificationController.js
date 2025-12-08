@@ -36,30 +36,13 @@ exports.sendToUser = async (req, res) => {
     if (req.userId.toString() === receiverId)
       return error(res, "Cannot send notification to yourself", 400);
 
-    // Check receiver's notification preferences
+    // Check receiver exists
     const receiver = await User.findById(receiverId);
     if (!receiver) {
       return error(res, "Receiver not found", 404);
     }
 
-    // Check if receiver has notifications enabled
-    if (!isNotificationsEnabled(receiver)) {
-      return error(
-        res,
-        "Receiver has notifications disabled",
-        403
-      );
-    }
-
-    // Check if receiver allows in-app notifications
-    if (!shouldSendInAppNotification(receiver)) {
-      return error(
-        res,
-        "Receiver has in-app notifications disabled",
-        403
-      );
-    }
-
+    // Always save notification to database
     const notification = await Notification.create({
       receivers: [receiverId],
       sender: req.userId,
@@ -68,25 +51,26 @@ exports.sendToUser = async (req, res) => {
       message,
     });
 
-    // Emit via Socket.IO with error handling
-    const io = req.app.get("io");
-    if (io) {
-      const receiverIdStr = receiverId.toString();
-      try {
-        // Get the room to check if anyone is in it
-        const room = io.sockets.adapter.rooms.get(receiverIdStr);
-        const socketsInRoom = room ? room.size : 0;
+    // Only emit via Socket.IO if receiver has notifications enabled
+    if (isNotificationsEnabled(receiver) && shouldSendInAppNotification(receiver)) {
+      const io = req.app.get("io");
+      if (io) {
+        const receiverIdStr = receiverId.toString();
+        try {
+          const room = io.sockets.adapter.rooms.get(receiverIdStr);
+          const socketsInRoom = room ? room.size : 0;
 
-        console.log(`📨 Attempting to emit to user ${receiverIdStr}, sockets in room: ${socketsInRoom}`);
+          console.log(`📨 Attempting to emit to user ${receiverIdStr}, sockets in room: ${socketsInRoom}`);
 
-        io.to(receiverIdStr).emit("new-notification", notification);
-        console.log(`✅ Emitted notification to user ${receiverIdStr}`);
-      } catch (socketError) {
-        console.warn(`⚠️ Could not emit notification via socket to ${receiverId}:`, socketError.message);
+          io.to(receiverIdStr).emit("new-notification", notification);
+          console.log(`✅ Emitted notification to user ${receiverIdStr}`);
+        } catch (socketError) {
+          console.warn(`⚠️ Could not emit notification via socket to ${receiverId}:`, socketError.message);
+        }
       }
     }
 
-    return success(res, "Notification sent to user", notification);
+    return success(res, "Notification saved successfully", notification);
   } catch (err) {
     return error(res, err.message);
   }
@@ -109,27 +93,25 @@ exports.sendToAll = async (req, res) => {
       isDeleted: { $ne: true },
     }).select("_id notificationsEnabled preferences");
 
-    // Filter users based on their notification preferences
-    const receivers = users
-      .filter((user) => shouldSendInAppNotification(user))
-      .map((u) => u._id);
-
-    if (receivers.length === 0) {
-      return error(res, "No users with notifications enabled to send to", 404);
-    }
+    // Create notification for all users (regardless of preferences)
+    const allUserIds = users.map((u) => u._id);
 
     const notification = await Notification.create({
-      receivers,
+      receivers: allUserIds,
       sender: req.userId,
       type: type,
       title,
       message,
     });
 
-    // Emit via Socket.IO with error handling
+    // Emit via Socket.IO only to users with notifications enabled
+    const enabledReceivers = users
+      .filter((user) => shouldSendInAppNotification(user))
+      .map((u) => u._id);
+
     const io = req.app.get("io");
-    if (io) {
-      receivers.forEach((id) => {
+    if (io && enabledReceivers.length > 0) {
+      enabledReceivers.forEach((id) => {
         try {
           io.to(id.toString()).emit("new-notification", notification);
           console.log(`✅ Emitted broadcast notification to user ${id}`);
@@ -158,8 +140,21 @@ exports.sendToAdmin = async (req, res) => {
       isDeleted: { $ne: true },
     }).select("_id notificationsEnabled preferences");
 
-    // Filter admins based on their notification preferences
-    const receivers = admins
+    // Create notification for all admins (except sender)
+    const allAdminIds = admins
+      .filter((admin) => admin._id.toString() !== req.userId.toString())
+      .map((a) => a._id);
+
+    const notification = await Notification.create({
+      receivers: allAdminIds,
+      sender: req.userId,
+      type: type,
+      title,
+      message,
+    });
+
+    // Emit via Socket.IO only to admins with notifications enabled
+    const enabledReceivers = admins
       .filter((admin) => {
         const adminIdStr = admin._id.toString();
         return (
@@ -169,22 +164,9 @@ exports.sendToAdmin = async (req, res) => {
       })
       .map((a) => a._id);
 
-    if (receivers.length === 0) {
-      return error(res, "No admins with notifications enabled to send to", 404);
-    }
-
-    const notification = await Notification.create({
-      receivers,
-      sender: req.userId,
-      type: type,
-      title,
-      message,
-    });
-
-    // Emit via Socket.IO with error handling
     const io = req.app.get("io");
-    if (io) {
-      receivers.forEach((id) => {
+    if (io && enabledReceivers.length > 0) {
+      enabledReceivers.forEach((id) => {
         try {
           io.to(id.toString()).emit("new-notification", notification);
           console.log(`✅ Emitted admin notification to user ${id}`);
@@ -220,22 +202,14 @@ exports.sendToCategory = async (req, res) => {
 
     const userIds = [...new Set(habits.map((h) => h.userId.toString()))];
 
-    // Get users and filter by notification preferences
+    // Get users and create notification for all
     const users = await User.find({
       _id: { $in: userIds },
       isDeleted: { $ne: true },
     }).select("_id notificationsEnabled preferences");
 
-    const receivers = users
-      .filter((user) => shouldSendInAppNotification(user))
-      .map((u) => u._id);
-
-    if (receivers.length === 0) {
-      return error(res, "No users with notifications enabled in this category", 404);
-    }
-
     const notification = await Notification.create({
-      receivers,
+      receivers: users.map((u) => u._id),
       sender: req.userId,
       type: type,
       category,
@@ -243,10 +217,14 @@ exports.sendToCategory = async (req, res) => {
       message,
     });
 
-    // Emit via Socket.IO with error handling
+    // Emit via Socket.IO only to users with notifications enabled
+    const enabledReceivers = users
+      .filter((user) => shouldSendInAppNotification(user))
+      .map((u) => u._id);
+
     const io = req.app.get("io");
-    if (io) {
-      receivers.forEach((id) => {
+    if (io && enabledReceivers.length > 0) {
+      enabledReceivers.forEach((id) => {
         try {
           io.to(id.toString()).emit("new-notification", notification);
           console.log(`✅ Emitted category notification to user ${id}`);
@@ -277,26 +255,25 @@ exports.sendSystem = async (req, res) => {
       isDeleted: { $ne: true },
     }).select("_id notificationsEnabled preferences");
 
-    // Filter users based on their notification preferences
-    const receivers = users
-      .filter((user) => shouldSendInAppNotification(user))
-      .map((u) => u._id);
-
-    if (!receivers || receivers.length === 0)
-      return error(res, "No users with notifications enabled", 400);
+    // Create notification for all users
+    const allUserIds = users.map((u) => u._id);
 
     const notification = await Notification.create({
-      receivers,
+      receivers: allUserIds,
       sender: req.userId,
       type: type,
       title,
       message,
     });
 
-    // Emit via Socket.IO with error handling
+    // Emit via Socket.IO only to users with notifications enabled
+    const enabledReceivers = users
+      .filter((user) => shouldSendInAppNotification(user))
+      .map((u) => u._id);
+
     const io = req.app.get("io");
-    if (io) {
-      receivers.forEach((id) => {
+    if (io && enabledReceivers.length > 0) {
+      enabledReceivers.forEach((id) => {
         try {
           io.to(id.toString()).emit("new-notification", notification);
           console.log(`✅ Emitted system notification to user ${id}`);
@@ -446,16 +423,7 @@ exports.sendHabitReminder = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if user has notifications enabled
-    if (!isNotificationsEnabled(user)) {
-      return res.status(403).json({ message: "You have notifications disabled" });
-    }
-
-    // Check if user allows in-app notifications
-    if (!shouldSendInAppNotification(user)) {
-      return res.status(403).json({ message: "You have in-app notifications disabled" });
-    }
-
+    // Always create notification
     const notification = new Notification({
       receivers: [senderId],
       sender: senderId,
@@ -467,20 +435,22 @@ exports.sendHabitReminder = async (req, res) => {
 
     await notification.save();
 
-    // Emit via Socket.IO with error handling
-    const io = req.app.get("io");
-    if (io) {
-      try {
-        io.to(senderId.toString()).emit("habit-reminder", {
-          _id: notification._id,
-          habitName,
-          preferredTime,
-          message,
-          createdAt: notification.createdAt,
-        });
-        console.log(`✅ Habit reminder emitted to user ${senderId}`);
-      } catch (socketError) {
-        console.warn(`⚠️ Could not emit habit reminder via socket to ${senderId}:`, socketError.message);
+    // Only emit via Socket.IO if user has notifications enabled
+    if (isNotificationsEnabled(user) && shouldSendInAppNotification(user)) {
+      const io = req.app.get("io");
+      if (io) {
+        try {
+          io.to(senderId.toString()).emit("habit-reminder", {
+            _id: notification._id,
+            habitName,
+            preferredTime,
+            message,
+            createdAt: notification.createdAt,
+          });
+          console.log(`✅ Habit reminder emitted to user ${senderId}`);
+        } catch (socketError) {
+          console.warn(`⚠️ Could not emit habit reminder via socket to ${senderId}:`, socketError.message);
+        }
       }
     }
 

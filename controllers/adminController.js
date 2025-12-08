@@ -5,11 +5,47 @@ const { validationResult } = require("express-validator");
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({
+    const { page = 1, limit = 10, search = "" } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
+    const skip = (pageNum - 1) * limitNum;
+
+    const searchFilter = search.trim() ? {
+      $or: [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ]
+    } : {};
+
+    const query = {
       role: "user",
       isDeleted: { $ne: true },
-    }).select("-password");
-    return success(res, "Users fetched successfully", users);
+      ...searchFilter,
+    };
+
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .select("-password")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      User.countDocuments(query)
+    ]);
+
+    const totalPages = Math.ceil(total / limitNum);
+
+    return success(res, "Users fetched successfully", {
+      data: users,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      }
+    });
   } catch (err) {
     return error(res, err.message);
   }
@@ -220,5 +256,3 @@ exports.getStats = async (req, res) => {
     return error(res, err.message);
   }
 };
-
-

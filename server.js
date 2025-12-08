@@ -11,6 +11,7 @@ const analyticsRoutes = require("./routes/analytics");
 const profileRoutes = require("./routes/profile");
 const adminRoutes = require("./routes/admin");
 const notificationRoutes = require("./routes/notifications");
+const notificationSettingsRoutes = require("./routes/notificationSettings");
 const aiSuggestions = require("./routes/aiCoach");
 
 const { error } = require("./utils/response");
@@ -135,6 +136,7 @@ app.use("/api/ai", aiSuggestions);
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/notification-settings", notificationSettingsRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "Backend is running" });
