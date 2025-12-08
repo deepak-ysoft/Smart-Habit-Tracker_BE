@@ -15,21 +15,24 @@ const {
 // ----------------------------------------------------------------------
 exports.sendToUser = async (req, res) => {
   try {
-    const { receiverId, title, message, type } = req.body;
-
-    if (!receiverId || !title || !message || !type)
+    const { email, title, message, type } = req.body;
+    console.log("email, title, message, type ", email, title, message, type);
+    if (!email || !title || !message || !type)
       return error(res, "All fields are required", 400);
 
+    let receiverId = null;
     // Role validation
     if (req.userRole === "user") {
-      const target = await User.findOne({
-        _id: receiverId,
-        isDeleted: { $ne: true },
-      });
+      const target = await User.findOne({ email, isDeleted: { $ne: true } });
+      receiverId = target?._id.toString();
 
-      if (!target || target.role !== "admin") {
+      if (!target || target.role !== "admin")
         return error(res, "Users can send only to admins", 403);
-      }
+    } else if (req.userRole === "admin") {
+      const target = await User.findOne({ email, isDeleted: { $ne: true } });
+      receiverId = target?._id.toString();
+
+      if (!target) return error(res, "Receiver not found", 404);
     }
 
     // Prevent admin sending to themselves
@@ -52,7 +55,10 @@ exports.sendToUser = async (req, res) => {
     });
 
     // Only emit via Socket.IO if receiver has notifications enabled
-    if (isNotificationsEnabled(receiver) && shouldSendInAppNotification(receiver)) {
+    if (
+      isNotificationsEnabled(receiver) &&
+      shouldSendInAppNotification(receiver)
+    ) {
       const io = req.app.get("io");
       if (io) {
         const receiverIdStr = receiverId.toString();
@@ -60,12 +66,17 @@ exports.sendToUser = async (req, res) => {
           const room = io.sockets.adapter.rooms.get(receiverIdStr);
           const socketsInRoom = room ? room.size : 0;
 
-          console.log(`📨 Attempting to emit to user ${receiverIdStr}, sockets in room: ${socketsInRoom}`);
+          console.log(
+            `📨 Attempting to emit to user ${receiverIdStr}, sockets in room: ${socketsInRoom}`
+          );
 
           io.to(receiverIdStr).emit("new-notification", notification);
           console.log(`✅ Emitted notification to user ${receiverIdStr}`);
         } catch (socketError) {
-          console.warn(`⚠️ Could not emit notification via socket to ${receiverId}:`, socketError.message);
+          console.warn(
+            `⚠️ Could not emit notification via socket to ${receiverId}:`,
+            socketError.message
+          );
         }
       }
     }
@@ -171,7 +182,10 @@ exports.sendToAdmin = async (req, res) => {
           io.to(id.toString()).emit("new-notification", notification);
           console.log(`✅ Emitted admin notification to user ${id}`);
         } catch (socketError) {
-          console.warn(`⚠️ Could not emit to admin ${id}:`, socketError.message);
+          console.warn(
+            `⚠️ Could not emit to admin ${id}:`,
+            socketError.message
+          );
         }
       });
     }
@@ -449,7 +463,10 @@ exports.sendHabitReminder = async (req, res) => {
           });
           console.log(`✅ Habit reminder emitted to user ${senderId}`);
         } catch (socketError) {
-          console.warn(`⚠️ Could not emit habit reminder via socket to ${senderId}:`, socketError.message);
+          console.warn(
+            `⚠️ Could not emit habit reminder via socket to ${senderId}:`,
+            socketError.message
+          );
         }
       }
     }
